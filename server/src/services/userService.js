@@ -91,17 +91,17 @@ const authenticateUser = async ({ email, password }) => {
 };
 
 const searchUsers = async ({ query, excludeUserId }) => {
-  if (!query || typeof query !== 'string') {
-    return [];
-  }
+  const trimmed = (query || '').trim();
 
-  const search = query.trim();
-  if (!search) {
-    return [];
+  if (!trimmed) {
+    const users = await User.find({ _id: { $ne: excludeUserId } })
+      .limit(50)
+      .sort({ createdAt: -1 });
+    return users.map(toUserDto);
   }
 
   // Экранируем спецсимволы, чтобы искать буквальный текст без падений RegExp
-  const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const regex = new RegExp(escaped, 'i');
 
   const users = await User.find({

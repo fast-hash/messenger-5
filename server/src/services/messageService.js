@@ -2,16 +2,22 @@ const Chat = require('../models/Chat');
 const Message = require('../models/Message');
 const cryptoService = require('./crypto/cryptoService');
 
-const ensureParticipant = (chatDoc, userId) => {
-  const isParticipant = chatDoc.participants
-    .map((id) => id.toString())
-    .includes(userId.toString());
+const ensureParticipant = (chatDoc, userId, { allowRemoved = false } = {}) => {
+  const participantIds = chatDoc.participants.map((id) => id.toString());
+  const removedIds = (chatDoc.removedFor || []).map((id) => id.toString());
+  const idStr = userId.toString();
 
-  if (!isParticipant) {
-    const error = new Error('Not authorized for this chat');
-    error.status = 403;
-    throw error;
+  if (participantIds.includes(idStr)) {
+    return;
   }
+
+  if (allowRemoved && removedIds.includes(idStr)) {
+    return;
+  }
+
+  const error = new Error('Not authorized for this chat');
+  error.status = 403;
+  throw error;
 };
 
 const toMessageDto = (messageDoc, text) => ({
@@ -40,6 +46,12 @@ const sendMessage = async ({ chatId, senderId, text }) => {
   if (!chat) {
     const error = new Error('Chat not found');
     error.status = 404;
+    throw error;
+  }
+
+  if (chat.type === 'group' && (chat.removedFor || []).some((id) => id.toString() === senderId.toString())) {
+    const error = new Error('Вы больше не являетесь участником группы');
+    error.status = 403;
     throw error;
   }
 
@@ -86,7 +98,7 @@ const getMessagesForChat = async ({ chatId, viewerId }) => {
     throw error;
   }
 
-  ensureParticipant(chat, viewerId);
+  ensureParticipant(chat, viewerId, { allowRemoved: true });
 
   const messages = await Message.find({ chat: chatId }).sort({ createdAt: 1 });
 

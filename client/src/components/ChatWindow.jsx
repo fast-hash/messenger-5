@@ -24,20 +24,35 @@ const ChatWindow = ({ chat, messages, currentUserId, typingUsers, onToggleNotifi
     }
   }, [messages]);
 
-  const isOtherTyping = typingUsers?.includes(chat.otherUser?.id);
-  const typingHint = isOtherTyping
-    ? `Пользователь ${chat.otherUser?.displayName || chat.otherUser?.username || 'собеседник'} печатает...`
-    : '';
+  let typingHint = '';
+  if (chat.type === 'group') {
+    if (typingUsers?.length) {
+      const names = chat.participants
+        ?.filter((p) => typingUsers.includes(p.id))
+        .map((p) => p.displayName || p.username);
+      if (names?.length) {
+        typingHint = `${names.join(', ')} печатает...`;
+      }
+    }
+  } else {
+    const isOtherTyping = typingUsers?.includes(chat.otherUser?.id);
+    typingHint = isOtherTyping
+      ? `Пользователь ${chat.otherUser?.displayName || chat.otherUser?.username || 'собеседник'} печатает...`
+      : '';
+  }
+
+  const headerTitle = chat.type === 'group' ? chat.title || 'Групповой чат' : chat.otherUser?.displayName || chat.otherUser?.username;
+  const headerMeta =
+    chat.type === 'group'
+      ? `Участников: ${chat.participants?.length || 0}`
+      : `${formatRole(chat.otherUser?.role)} · ${chat.otherUser?.department || 'Отдел не указан'} · ${chat.isOnline ? 'онлайн' : 'офлайн'}`;
 
   return (
     <div className="chat-window">
       <div className="chat-window__header">
         <div>
-          <div className="chat-window__title">{chat.otherUser?.displayName || chat.otherUser?.username}</div>
-          <div className="chat-window__meta">
-            {formatRole(chat.otherUser?.role)} · {chat.otherUser?.department || 'Отдел не указан'} ·{' '}
-            {chat.isOnline ? 'онлайн' : 'офлайн'}
-          </div>
+          <div className="chat-window__title">{headerTitle}</div>
+          <div className="chat-window__meta">{headerMeta}</div>
         </div>
         <div className="chat-window__actions">
           <button type="button" className="secondary-btn" onClick={() => setShowSettings((prev) => !prev)}>
@@ -51,9 +66,8 @@ const ChatWindow = ({ chat, messages, currentUserId, typingUsers, onToggleNotifi
                   checked={chat.notificationsEnabled}
                   onChange={() => onToggleNotifications(chat.id)}
                 />
-                Уведомления по этому чату
+                Получать уведомления по этому чату
               </label>
-              <p className="muted small">Настройки уведомлений — простой задел. Полноценные push/desktop/email будут описаны в дипломе.</p>
             </div>
           )}
         </div>
@@ -62,15 +76,22 @@ const ChatWindow = ({ chat, messages, currentUserId, typingUsers, onToggleNotifi
         {messages.length === 0 && <p className="empty-state">Нет сообщений. Напишите первым.</p>}
         {messages.map((message) => {
           const isMine = message.senderId === currentUserId;
+          const senderName = !isMine
+            ? chat.participants?.find((p) => p.id === message.senderId)?.displayName || 'Участник'
+            : 'Вы';
           return (
             <div key={message.id} className={`bubble ${isMine ? 'bubble--mine' : 'bubble--their'}`}>
+              {chat.type === 'group' && !isMine && <div className="bubble__author">{senderName}</div>}
               <div className="bubble__text">{message.text}</div>
               <div className="bubble__meta">{formatTime(message.createdAt)}</div>
             </div>
           );
         })}
       </div>
-      {typingHint && <div className="typing-hint">{typingHint}</div>}
+      {chat.removed && chat.type === 'group' && (
+        <div className="typing-hint warning">Вас удалили из этой группы. Вы можете просматривать историю, но отправка отключена.</div>
+      )}
+      {!chat.removed && typingHint && <div className="typing-hint">{typingHint}</div>}
     </div>
   );
 };
@@ -81,6 +102,10 @@ ChatWindow.propTypes = {
     otherUser: PropTypes.object,
     isOnline: PropTypes.bool,
     notificationsEnabled: PropTypes.bool,
+    type: PropTypes.string,
+    title: PropTypes.string,
+    participants: PropTypes.array,
+    removed: PropTypes.bool,
   }).isRequired,
   messages: PropTypes.arrayOf(
     PropTypes.shape({

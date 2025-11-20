@@ -18,6 +18,10 @@ const ChatList = ({ chats, selectedChatId, onSelect }) => {
         const isActive = chat.id === selectedChatId;
         const lastMessage = chat.lastMessage?.text || 'Нет сообщений';
         const lastTime = chat.lastMessage?.createdAt ? formatTime(chat.lastMessage.createdAt) : '';
+        const title =
+          chat.type === 'group'
+            ? chat.title || 'Групповой чат'
+            : chat.otherUser?.displayName || chat.otherUser?.username;
         return (
           <li key={chat.id}>
             <button
@@ -26,21 +30,30 @@ const ChatList = ({ chats, selectedChatId, onSelect }) => {
               onClick={() => onSelect(chat.id)}
             >
               <div className="chat-list__avatar">
-                <span className={chat.isOnline ? 'status status--online' : 'status status--offline'} />
+                {chat.type === 'group' ? (
+                  <span className="status status--group" title="Группа" />
+                ) : (
+                  <span className={chat.isOnline ? 'status status--online' : 'status status--offline'} />
+                )}
               </div>
               <div className="chat-list__body">
                 <div className="chat-list__top">
                   <div>
-                    <div className="chat-list__title">{chat.otherUser?.displayName || chat.otherUser?.username}</div>
-                    <div className="chat-list__meta">
-                      {formatRole(chat.otherUser?.role)} · {chat.otherUser?.department || 'Отдел не указан'}
-                    </div>
+                    <div className="chat-list__title">{title}</div>
+                    {chat.type === 'group' ? (
+                      <div className="chat-list__meta">Участников: {chat.participants?.length || 0}</div>
+                    ) : (
+                      <div className="chat-list__meta">
+                        {formatRole(chat.otherUser?.role)} · {chat.otherUser?.department || 'Отдел не указан'}
+                      </div>
+                    )}
                   </div>
                   <span className="chat-list__time">{lastTime}</span>
                 </div>
                 <div className="chat-list__last">
                   {lastMessage}
                   {!chat.notificationsEnabled && <span className="muted-flag"> · без уведомлений</span>}
+                  {chat.removed && chat.type === 'group' && <span className="muted-flag"> · вас удалили</span>}
                 </div>
               </div>
             </button>
@@ -56,6 +69,8 @@ ChatList.propTypes = {
     PropTypes.shape({
       id: PropTypes.string.isRequired,
       otherUser: PropTypes.object,
+      type: PropTypes.string,
+      title: PropTypes.string,
       lastMessage: PropTypes.shape({
         text: PropTypes.string,
         senderId: PropTypes.string,

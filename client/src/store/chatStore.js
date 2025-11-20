@@ -4,12 +4,24 @@ import * as chatApi from '../api/chatApi';
 import * as messagesApi from '../api/messagesApi';
 
 const mapChat = (chat, currentUserId) => {
+  const base = {
+    ...chat,
+    notificationsEnabled: chat.notificationsEnabled ?? true,
+  };
+
+  if (chat.type === 'group') {
+    return {
+      ...base,
+      otherUser: null,
+      isOnline: false,
+    };
+  }
+
   const otherUser = chat.participants.find((participant) => participant.id !== currentUserId) || chat.participants[0];
   return {
-    ...chat,
+    ...base,
     otherUser,
     isOnline: false,
-    notificationsEnabled: chat.notificationsEnabled ?? true,
   };
 };
 
@@ -81,7 +93,8 @@ export const useChatStore = create((set, get) => ({
   },
   setSelectedChat(chatId) {
     const socket = get().socket;
-    if (socket && chatId) {
+    const chat = get().chats.find((c) => c.id === chatId);
+    if (socket && chatId && chat && !chat.removed) {
       socket.emit('chats:join', { chatId });
     }
     set({ selectedChatId: chatId });
@@ -179,7 +192,7 @@ export const useChatStore = create((set, get) => ({
     });
 
     const socket = get().socket;
-    if (socket) {
+    if (socket && !mapped.removed) {
       socket.emit('chats:join', { chatId: mapped.id });
     }
   },
