@@ -20,13 +20,28 @@ const ensureParticipant = (chatDoc, userId, { allowRemoved = false } = {}) => {
   throw error;
 };
 
-const toMessageDto = (messageDoc, text) => ({
-  id: messageDoc._id.toString(),
-  chatId: messageDoc.chat.toString(),
-  senderId: messageDoc.sender.toString(),
-  text,
-  createdAt: messageDoc.createdAt,
-});
+const toMessageDto = (messageDoc, text) => {
+  const sender = messageDoc.sender || {};
+  const senderDto = sender._id
+    ? {
+        id: sender._id.toString(),
+        displayName: sender.displayName,
+        username: sender.username,
+        role: sender.role,
+        department: sender.department,
+        email: sender.email,
+      }
+    : { id: sender.toString() };
+
+  return {
+    id: messageDoc._id.toString(),
+    chatId: messageDoc.chat.toString(),
+    senderId: messageDoc.sender.toString(),
+    sender: senderDto,
+    text,
+    createdAt: messageDoc.createdAt,
+  };
+};
 
 const sendMessage = async ({ chatId, senderId, text }) => {
   if (!chatId || !senderId || typeof text !== 'string') {
@@ -70,6 +85,8 @@ const sendMessage = async ({ chatId, senderId, text }) => {
     encryption,
   });
 
+  await message.populate('sender');
+
   await Chat.findByIdAndUpdate(chatId, {
     lastMessage: {
       text: plaintext,
@@ -100,7 +117,9 @@ const getMessagesForChat = async ({ chatId, viewerId }) => {
 
   ensureParticipant(chat, viewerId, { allowRemoved: true });
 
-  const messages = await Message.find({ chat: chatId }).sort({ createdAt: 1 });
+  const messages = await Message.find({ chat: chatId })
+    .sort({ createdAt: 1 })
+    .populate('sender');
 
   const results = [];
   for (const message of messages) {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { formatRole } from '../utils/roleLabels';
 import { ensureNotificationPermission } from '../utils/notifications';
@@ -11,13 +11,25 @@ const formatTime = (isoString) => {
   }
 };
 
-const ChatWindow = ({ chat, messages, currentUserId, typingUsers, onToggleNotifications }) => {
+const ChatWindow = ({
+  chat,
+  messages,
+  currentUserId,
+  typingUsers,
+  onToggleNotifications,
+  onOpenManage,
+}) => {
   const listRef = useRef(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [lastReadBoundary, setLastReadBoundary] = useState(chat.lastReadAt || null);
 
   useEffect(() => {
     setShowSettings(false);
   }, [chat.id]);
+
+  useEffect(() => {
+    setLastReadBoundary(chat.lastReadAt || null);
+  }, [chat.id, chat.lastReadAt]);
 
   useEffect(() => {
     if (listRef.current) {
@@ -25,28 +37,41 @@ const ChatWindow = ({ chat, messages, currentUserId, typingUsers, onToggleNotifi
     }
   }, [messages]);
 
-  let typingHint = '';
-  if (chat.type === 'group') {
-    if (typingUsers?.length) {
-      const names = chat.participants
-        ?.filter((p) => typingUsers.includes(p.id))
-        .map((p) => p.displayName || p.username);
-      if (names?.length) {
-        typingHint = `${names.join(', ')} печатает...`;
+  const typingHint = useMemo(() => {
+    if (chat.type === 'group') {
+      if (typingUsers?.length) {
+        const names = chat.participants
+          ?.filter((p) => typingUsers.includes(p.id))
+          .map((p) => p.displayName || p.username);
+        if (names?.length) {
+          return `${names.join(', ')} печатает...`;
+        }
       }
+      return '';
     }
-  } else {
     const isOtherTyping = typingUsers?.includes(chat.otherUser?.id);
-    typingHint = isOtherTyping
+    return isOtherTyping
       ? `Пользователь ${chat.otherUser?.displayName || chat.otherUser?.username || 'собеседник'} печатает...`
       : '';
-  }
+  }, [chat.otherUser, chat.participants, chat.type, typingUsers]);
 
-  const headerTitle = chat.type === 'group' ? chat.title || 'Групповой чат' : chat.otherUser?.displayName || chat.otherUser?.username;
+  const canManage =
+    chat.type === 'group' &&
+    (chat.createdBy === currentUserId || (chat.admins || []).includes(currentUserId));
+
+  const headerTitle =
+    chat.type === 'group'
+      ? chat.title || 'Групповой чат'
+      : chat.otherUser?.displayName || chat.otherUser?.username;
   const headerMeta =
     chat.type === 'group'
       ? `Участников: ${chat.participants?.length || 0}`
       : `${formatRole(chat.otherUser?.role)} · ${chat.otherUser?.department || 'Отдел не указан'} · ${chat.isOnline ? 'онлайн' : 'офлайн'}`;
+
+  const lastReadAt = lastReadBoundary ? new Date(lastReadBoundary) : null;
+  const firstUnreadIndex = lastReadAt
+    ? messages.findIndex((msg) => new Date(msg.createdAt) > lastReadAt)
+    : -1;
 
   return (
     <div className="chat-window">
@@ -56,6 +81,11 @@ const ChatWindow = ({ chat, messages, currentUserId, typingUsers, onToggleNotifi
           <div className="chat-window__meta">{headerMeta}</div>
         </div>
         <div className="chat-window__actions">
+          {canManage && (
+            <button type="button" className="secondary-btn" onClick={() => onOpenManage(chat.id)}>
+              Управление
+            </button>
+          )}
           <button type="button" className="secondary-btn" onClick={() => setShowSettings((prev) => !prev)}>
             Настройки
           </button>
@@ -80,22 +110,39 @@ const ChatWindow = ({ chat, messages, currentUserId, typingUsers, onToggleNotifi
       </div>
       <div className="chat-window__messages" ref={listRef}>
         {messages.length === 0 && <p className="empty-state">Нет сообщений. Напишите первым.</p>}
-        {messages.map((message) => {
+        {messages.map((message, index) => {
           const isMine = message.senderId === currentUserId;
-          const senderName = !isMine
-            ? chat.participants?.find((p) => p.id === message.senderId)?.displayName || 'Участник'
-            : 'Вы';
+          const sender = message.sender || {};
+          const authorName = sender.displayName || sender.username || 'Участник';
+          const authorMeta = formatRole(sender.role) + (sender.department ? ` · ${sender.department}` : '');
+
           return (
-            <div key={message.id} className={`bubble ${isMine ? 'bubble--mine' : 'bubble--their'}`}>
-              {chat.type === 'group' && !isMine && <div className="bubble__author">{senderName}</div>}
-              <div className="bubble__text">{message.text}</div>
-              <div className="bubble__meta">{formatTime(message.createdAt)}</div>
+            <div key={message.id}>
+              {index === firstUnreadIndex && (
+                <div className="unread-separator">
+                  <span>Непрочитанные сообщения</span>
+                </div>
+              )}
+              <div className={`message-row ${isMine ? 'message-row--mine' : ''}`}>
+                {chat.type === 'group' && !isMine && (
+                  <div className="message-author">
+                    <span className="message-author__name">{authorName}</span>
+                    <span className="message-author__meta">{authorMeta}</span>
+                  </div>
+                )}
+                <div className={`message-bubble ${isMine ? 'message-own' : 'message-incoming'}`}>
+                  <div className="message-text">{message.text}</div>
+                  <div className="message-time">{formatTime(message.createdAt)}</div>
+                </div>
+              </div>
             </div>
           );
         })}
       </div>
       {chat.removed && chat.type === 'group' && (
-        <div className="typing-hint warning">Вас удалили из этой группы. Вы можете просматривать историю, но отправка отключена.</div>
+        <div className="typing-hint warning">
+          Вас удалили из этой группы. Вы можете просматривать историю, но отправка отключена.
+        </div>
       )}
       {!chat.removed && typingHint && <div className="typing-hint">{typingHint}</div>}
     </div>
@@ -112,12 +159,16 @@ ChatWindow.propTypes = {
     title: PropTypes.string,
     participants: PropTypes.array,
     removed: PropTypes.bool,
+    createdBy: PropTypes.string,
+    admins: PropTypes.arrayOf(PropTypes.string),
+    lastReadAt: PropTypes.oneOfType([PropTypes.string, PropTypes.instanceOf(Date)]),
   }).isRequired,
   messages: PropTypes.arrayOf(
     PropTypes.shape({
       id: PropTypes.string.isRequired,
       chatId: PropTypes.string.isRequired,
       senderId: PropTypes.string.isRequired,
+      sender: PropTypes.object,
       text: PropTypes.string.isRequired,
       createdAt: PropTypes.string,
     })
@@ -125,11 +176,13 @@ ChatWindow.propTypes = {
   currentUserId: PropTypes.string.isRequired,
   typingUsers: PropTypes.arrayOf(PropTypes.string),
   onToggleNotifications: PropTypes.func,
+  onOpenManage: PropTypes.func,
 };
 
 ChatWindow.defaultProps = {
   typingUsers: [],
   onToggleNotifications: () => {},
+  onOpenManage: () => {},
 };
 
 export default ChatWindow;

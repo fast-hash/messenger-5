@@ -38,13 +38,15 @@ const chatSchema = new mongoose.Schema(
       unique: true,
       sparse: true,
     },
-    joinRequests: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        default: [],
-      },
-    ],
+    joinRequests: {
+      type: [
+        {
+          user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+          createdAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
+    },
     removedFor: [
       {
         type: mongoose.Schema.Types.ObjectId,
