@@ -2,6 +2,29 @@ const mongoose = require('mongoose');
 
 const chatSchema = new mongoose.Schema(
   {
+    type: {
+      type: String,
+      enum: ['direct', 'group'],
+      default: 'direct',
+      index: true,
+    },
+    title: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    admins: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: [],
+      },
+    ],
     participants: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -11,9 +34,24 @@ const chatSchema = new mongoose.Schema(
     ],
     participantsKey: {
       type: String,
-      required: true,
+      required: false,
       unique: true,
+      sparse: true,
     },
+    joinRequests: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: [],
+      },
+    ],
+    removedFor: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: [],
+      },
+    ],
     lastMessage: {
       text: { type: String, default: null },
       sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
@@ -33,6 +71,7 @@ const chatSchema = new mongoose.Schema(
   }
 );
 
-chatSchema.index({ participantsKey: 1 }, { unique: true });
+chatSchema.index({ participantsKey: 1 }, { unique: true, sparse: true });
+chatSchema.index({ type: 1 });
 
 module.exports = mongoose.model('Chat', chatSchema);
