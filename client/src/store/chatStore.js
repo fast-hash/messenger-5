@@ -9,6 +9,7 @@ const mapChat = (chat, currentUserId) => {
     ...chat,
     notificationsEnabled: chat.notificationsEnabled ?? true,
     unreadCount: chat.unreadCount ?? 0,
+    lastReadAt: chat.lastReadAt || null,
   };
 
   if (chat.type === 'group') {
@@ -48,6 +49,9 @@ export const useChatStore = create((set, get) => ({
       const state = get();
       const isOwn = message.senderId === currentUserId;
       const isCurrent = state.selectedChatId === message.chatId;
+      if (isCurrent && !isOwn) {
+        state.setChatLastRead(message.chatId, message.createdAt);
+      }
       if (!isOwn && !isCurrent) {
         const chat = state.chats.find((c) => c.id === message.chatId);
         const nextCount = (chat?.unreadCount || 0) + 1;
@@ -63,7 +67,9 @@ export const useChatStore = create((set, get) => ({
           const title =
             chatState?.type === 'group'
               ? `Новое сообщение в группе "${chatState?.title || 'Группа'}"`
-              : `Новое сообщение от ${message.senderName || 'сотрудника'}`;
+              : `Новое сообщение от ${
+                  message.sender?.displayName || message.senderName || 'сотрудника'
+                }`;
           const body = message.text;
           const tag = `chat-${message.chatId}`;
           showBrowserNotification({ title, body, tag });
@@ -127,7 +133,8 @@ export const useChatStore = create((set, get) => ({
     if (chatId) {
       get().setChatUnreadCount(chatId, 0);
       try {
-        await chatApi.markChatRead(chatId);
+        const { lastReadAt } = await chatApi.markChatRead(chatId);
+        get().setChatLastRead(chatId, lastReadAt || new Date().toISOString());
       } catch (e) {
         console.error('Не удалось отметить чат прочитанным', e);
       }
@@ -188,6 +195,13 @@ export const useChatStore = create((set, get) => ({
     set((state) => ({
       chats: state.chats.map((chat) =>
         chat.id === chatId ? { ...chat, unreadCount } : chat
+      ),
+    }));
+  },
+  setChatLastRead(chatId, lastReadAt) {
+    set((state) => ({
+      chats: state.chats.map((chat) =>
+        chat.id === chatId ? { ...chat, lastReadAt } : chat
       ),
     }));
   },

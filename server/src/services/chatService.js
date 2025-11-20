@@ -17,6 +17,9 @@ const mapUser = (user) => ({
   jobTitle: user.jobTitle,
 });
 
+const findReadState = (chatDoc, userId) =>
+  (chatDoc.readState || []).find((entry) => entry.user && entry.user.toString() === userId.toString());
+
 const toChatDto = (chatDoc, currentUserId) => ({
   id: chatDoc._id.toString(),
   type: chatDoc.type || 'direct',
@@ -40,6 +43,7 @@ const toChatDto = (chatDoc, currentUserId) => ({
   removed:
     currentUserId && (chatDoc.removedFor || []).some((id) => id.toString() === currentUserId.toString()),
   notificationsEnabled: chatDoc.notificationsEnabled !== false,
+  lastReadAt: currentUserId ? findReadState(chatDoc, currentUserId)?.lastReadAt || null : null,
 });
 
 const computeUnreadCount = async (chat, userId) => {
@@ -135,12 +139,16 @@ const createGroupChat = async ({ title, creatorId, participantIds = [] }) => {
 };
 
 const listGroupsForUser = async ({ userId }) => {
-  const groups = await Chat.find({ type: 'group' }).populate('participants').populate('admins');
+  const groups = await Chat.find({ type: 'group' })
+    .populate('participants')
+    .populate('admins');
 
   return groups.map((group) => {
     const isAdmin = group.admins.some((id) => id.toString() === userId.toString());
     const isMember = group.participants.some((id) => id.toString() === userId.toString());
-    const isPending = (group.joinRequests || []).some((id) => id.toString() === userId.toString());
+    const isPending = (group.joinRequests || []).some(
+      (req) => req.user && req.user.toString() === userId.toString()
+    );
 
     let membershipStatus = 'none';
     if (group.createdBy && group.createdBy.toString() === userId.toString()) membershipStatus = 'owner';
@@ -160,11 +168,17 @@ const listGroupsForUser = async ({ userId }) => {
   });
 };
 
+const mapJoinRequest = (request) => {
+  if (!request || !request.user) return null;
+  const base = mapUser(request.user);
+  return { ...base, createdAt: request.createdAt };
+};
+
 const getGroupDetails = async ({ chatId, userId }) => {
   const chat = await Chat.findById(chatId)
     .populate('participants')
     .populate('admins')
-    .populate('joinRequests');
+    .populate('joinRequests.user');
 
   if (!chat || chat.type !== 'group') {
     const error = new Error('Группа не найдена');
@@ -172,19 +186,29 @@ const getGroupDetails = async ({ chatId, userId }) => {
     throw error;
   }
 
-  const canManage = chat.admins.some((id) => id.toString() === userId.toString());
+  const canManage =
+    chat.admins.some((id) => id.toString() === userId.toString()) ||
+    (chat.createdBy && chat.createdBy.toString() === userId.toString());
+
+  if (!canManage) {
+    const error = new Error('Недостаточно прав для управления группой');
+    error.status = 403;
+    throw error;
+  }
 
   return {
     chat: {
       ...toChatDto(chat, userId),
-      joinRequests: canManage ? chat.joinRequests.map(mapUser) : [],
+      joinRequests: (chat.joinRequests || []).map(mapJoinRequest).filter(Boolean),
     },
     canManage,
   };
 };
 
 const ensureGroupAdmin = (chat, adminId) => {
-  const isAdmin = (chat.admins || []).some((id) => id.toString() === adminId.toString());
+  const isAdmin =
+    (chat.admins || []).some((id) => id.toString() === adminId.toString()) ||
+    (chat.createdBy && chat.createdBy.toString() === adminId.toString());
   if (!isAdmin) {
     const error = new Error('Требуются права администратора группы');
     error.status = 403;
@@ -193,7 +217,10 @@ const ensureGroupAdmin = (chat, adminId) => {
 };
 
 const groupAddParticipant = async ({ chatId, adminId, userId }) => {
-  const chat = await Chat.findById(chatId).populate('participants').populate('admins');
+  const chat = await Chat.findById(chatId)
+    .populate('participants')
+    .populate('admins')
+    .populate('joinRequests.user');
   if (!chat || chat.type !== 'group') {
     const error = new Error('Группа не найдена');
     error.status = 404;
@@ -202,7 +229,9 @@ const groupAddParticipant = async ({ chatId, adminId, userId }) => {
 
   ensureGroupAdmin(chat, adminId);
 
-  const joinRequests = (chat.joinRequests || []).filter((id) => id.toString() !== userId.toString());
+  const joinRequests = (chat.joinRequests || []).filter(
+    (req) => req.user && req.user.toString() !== userId.toString()
+  );
   const participants = Array.from(
     new Set([...chat.participants.map((p) => p.toString()), userId.toString()])
   );
@@ -210,13 +239,16 @@ const groupAddParticipant = async ({ chatId, adminId, userId }) => {
   chat.joinRequests = joinRequests;
   chat.participants = participants;
   await chat.save();
-  await chat.populate('participants').populate('admins').populate('joinRequests');
+  await chat.populate('participants').populate('admins').populate('joinRequests.user');
 
-  return getGroupDetails({ chatId, userId: adminId });
+  return { ok: true, ...(await getGroupDetails({ chatId, userId: adminId })) };
 };
 
 const groupRemoveParticipant = async ({ chatId, adminId, userId }) => {
-  const chat = await Chat.findById(chatId).populate('participants').populate('admins');
+  const chat = await Chat.findById(chatId)
+    .populate('participants')
+    .populate('admins')
+    .populate('joinRequests.user');
   if (!chat || chat.type !== 'group') {
     const error = new Error('Группа не найдена');
     error.status = 404;
@@ -234,9 +266,9 @@ const groupRemoveParticipant = async ({ chatId, adminId, userId }) => {
   chat.participants = chat.participants.filter((p) => p.toString() !== userId.toString());
   chat.removedFor = Array.from(new Set([...(chat.removedFor || []).map((id) => id.toString()), userId.toString()]));
   await chat.save();
-  await chat.populate('participants').populate('admins').populate('joinRequests');
+  await chat.populate('participants').populate('admins').populate('joinRequests.user');
 
-  return getGroupDetails({ chatId, userId: adminId });
+  return { ok: true, ...(await getGroupDetails({ chatId, userId: adminId })) };
 };
 
 const groupRename = async ({ chatId, adminId, title }) => {
@@ -271,16 +303,20 @@ const groupRequestJoin = async ({ chatId, userId }) => {
 
   const alreadyParticipant = chat.participants.some((p) => p.toString() === userId.toString());
   if (alreadyParticipant) {
-    return { status: 'member' };
+    return { ok: true, status: 'member' };
   }
 
-  const alreadyPending = (chat.joinRequests || []).some((id) => id.toString() === userId.toString());
-  if (!alreadyPending) {
-    chat.joinRequests = [...(chat.joinRequests || []), userId];
-    await chat.save();
+  const alreadyPending = (chat.joinRequests || []).some(
+    (req) => req.user && req.user.toString() === userId.toString()
+  );
+  if (alreadyPending) {
+    return { ok: true, status: 'already_requested' };
   }
 
-  return { status: 'pending' };
+  chat.joinRequests = [...(chat.joinRequests || []), { user: userId }];
+  await chat.save();
+
+  return { ok: true, status: 'requested' };
 };
 
 const groupApproveRequest = async ({ chatId, adminId, userId }) => {
@@ -293,7 +329,9 @@ const groupApproveRequest = async ({ chatId, adminId, userId }) => {
 
   ensureGroupAdmin(chat, adminId);
 
-  chat.joinRequests = (chat.joinRequests || []).filter((id) => id.toString() !== userId.toString());
+  chat.joinRequests = (chat.joinRequests || []).filter(
+    (req) => req.user && req.user.toString() !== userId.toString()
+  );
   chat.participants = Array.from(
     new Set([...(chat.participants || []).map((p) => p.toString()), userId.toString()])
   );
@@ -311,7 +349,9 @@ const groupRejectRequest = async ({ chatId, adminId, userId }) => {
   }
 
   ensureGroupAdmin(chat, adminId);
-  chat.joinRequests = (chat.joinRequests || []).filter((id) => id.toString() !== userId.toString());
+  chat.joinRequests = (chat.joinRequests || []).filter(
+    (req) => req.user && req.user.toString() !== userId.toString()
+  );
   await chat.save();
 
   return getGroupDetails({ chatId, userId: adminId });
@@ -335,7 +375,7 @@ const markChatRead = async ({ chatId, userId }) => {
   }
 
   await chat.save();
-  return { ok: true };
+  return { ok: true, lastReadAt: now };
 };
 
 module.exports = {
