@@ -49,6 +49,7 @@ button {
   display: flex;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .app-sidebar {
@@ -72,6 +73,7 @@ button {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 
 .app-footer {

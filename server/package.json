@@ -8,7 +8,8 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "lint": "echo \"no lint configured\"",
-    "test": "echo \"no tests yet\""
+    "test": "echo \"no tests yet\"",
+    "fix-chats": "node scripts/fixChats.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

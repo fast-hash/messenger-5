@@ -145,27 +145,34 @@ const ChatsPage = () => {
         setSelectedChat(chat.id);
       }
       await refreshGroups();
-      setNewGroupTitle('');
-      setNewGroupParticipants([]);
       setShowDirectory(false);
     } catch (error) {
       // Простое уведомление, чтобы администратор понял причину сбоя
       // (например, дубликат названия или отсутствие прав)
       // eslint-disable-next-line no-alert
       alert(error?.response?.data?.error || 'Не удалось создать группу');
+    } finally {
+      setNewGroupTitle('');
+      setNewGroupParticipants([]);
     }
   };
 
   const handleRequestJoin = async (group) => {
-    const res = await requestJoin(group.id);
-    if (res?.ok) {
-      setGroups((prev) =>
-        prev.map((item) =>
-          item.id === group.id ? { ...item, membershipStatus: 'pending' } : item
-        )
-      );
+    try {
+      const res = await requestJoin(group.id);
+      if (res?.ok) {
+        setGroups((prev) =>
+          prev.map((item) =>
+            item.id === group.id ? { ...item, membershipStatus: 'pending' } : item
+          )
+        );
+      }
+      await refreshGroups();
+    } catch (error) {
+      console.error('Не удалось отправить заявку', error);
+      // eslint-disable-next-line no-alert
+      alert('Не удалось отправить заявку. Попробуйте ещё раз.');
     }
-    await refreshGroups();
   };
 
   const openManageModal = async (chatId) => {
@@ -331,7 +338,6 @@ const ChatsPage = () => {
           text={confirmState.text}
           onConfirm={async () => {
             await confirmState.action();
-            setConfirmState(null);
           }}
           onCancel={() => setConfirmState(null)}
         />
