@@ -79,7 +79,14 @@ const chatSchema = new mongoose.Schema(
   }
 );
 
-chatSchema.index({ participantsKey: 1 }, { unique: true, sparse: true });
+chatSchema.index(
+  { participantsKey: 1, type: 1 },
+  {
+    unique: true,
+    sparse: true,
+    partialFilterExpression: { type: 'direct', participantsKey: { $exists: true } },
+  }
+);
 chatSchema.index({ type: 1 });
 
 module.exports = mongoose.model('Chat', chatSchema);

@@ -121,15 +121,25 @@ const createGroupChat = async ({ title, creatorId, participantIds = [] }) => {
     new Set([creatorId, ...(participantIds || []).map((id) => id.toString())])
   );
 
-  const chat = await Chat.create({
-    type: 'group',
-    title: title.trim(),
-    createdBy: creatorId,
-    admins: [creatorId],
-    participants: allParticipants,
-    joinRequests: [],
-    removedFor: [],
-  });
+  let chat;
+  try {
+    chat = await Chat.create({
+      type: 'group',
+      title: title.trim(),
+      createdBy: creatorId,
+      admins: [creatorId],
+      participants: allParticipants,
+      joinRequests: [],
+      removedFor: [],
+    });
+  } catch (err) {
+    if (err.code === 11000) {
+      const error = new Error('Похоже, такая группа уже существует. Попробуйте другое название.');
+      error.status = 409;
+      throw error;
+    }
+    throw err;
+  }
 
   await chat.populate('participants').populate('admins');
   return {
@@ -313,7 +323,7 @@ const groupRequestJoin = async ({ chatId, userId }) => {
     return { ok: true, status: 'already_requested' };
   }
 
-  chat.joinRequests = [...(chat.joinRequests || []), { user: userId }];
+  chat.joinRequests = [...(chat.joinRequests || []), { user: userId, createdAt: new Date() }];
   await chat.save();
 
   return { ok: true, status: 'requested' };

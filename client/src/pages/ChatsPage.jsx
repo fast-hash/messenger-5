@@ -104,6 +104,12 @@ const ChatsPage = () => {
     await refreshGroups();
   };
 
+  const backToChoice = () => {
+    setShowDirect(false);
+    setShowDirectory(false);
+    setShowChoice(true);
+  };
+
   const closeModals = () => {
     setShowChoice(false);
     setShowDirect(false);
@@ -132,19 +138,33 @@ const ChatsPage = () => {
       title: newGroupTitle,
       participantIds: newGroupParticipants,
     };
-    const { chat } = await createGroupChat(payload);
-    if (chat) {
-      upsertChat(chat, user.id);
-      setSelectedChat(chat.id);
+    try {
+      const { chat } = await createGroupChat(payload);
+      if (chat) {
+        upsertChat(chat, user.id);
+        setSelectedChat(chat.id);
+      }
+      await refreshGroups();
+      setNewGroupTitle('');
+      setNewGroupParticipants([]);
+      setShowDirectory(false);
+    } catch (error) {
+      // Простое уведомление, чтобы администратор понял причину сбоя
+      // (например, дубликат названия или отсутствие прав)
+      // eslint-disable-next-line no-alert
+      alert(error?.response?.data?.error || 'Не удалось создать группу');
     }
-    await refreshGroups();
-    setNewGroupTitle('');
-    setNewGroupParticipants([]);
-    setShowDirectory(false);
   };
 
   const handleRequestJoin = async (group) => {
-    await requestJoin(group.id);
+    const res = await requestJoin(group.id);
+    if (res?.ok) {
+      setGroups((prev) =>
+        prev.map((item) =>
+          item.id === group.id ? { ...item, membershipStatus: 'pending' } : item
+        )
+      );
+    }
     await refreshGroups();
   };
 
@@ -201,7 +221,7 @@ const ChatsPage = () => {
       }
     >
       {selectedChat && (
-        <>
+        <div className="chat-area">
           <ChatWindow
             chat={selectedChat}
             messages={messages[selectedChatId] || []}
@@ -218,7 +238,7 @@ const ChatsPage = () => {
             }
             onTypingStop={() => !selectedChat.removed && socket?.emit('typing:stop', { chatId: selectedChatId })}
           />
-        </>
+        </div>
       )}
       {!selectedChat && <div className="empty-state">Выберите чат или создайте новый.</div>}
 
@@ -253,7 +273,12 @@ const ChatsPage = () => {
         <div className="modal-backdrop" onClick={closeModals}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal__header">
-              <h3>Личный чат</h3>
+              <div className="header-actions">
+                <button type="button" className="secondary-btn" onClick={backToChoice}>
+                  Назад
+                </button>
+                <h3>Личный чат</h3>
+              </div>
               <button type="button" className="secondary-btn" onClick={closeModals}>
                 Закрыть
               </button>
@@ -278,8 +303,8 @@ const ChatsPage = () => {
         loading={groupsLoading}
         selectedIds={newGroupParticipants}
         onChangeSelected={setNewGroupParticipants}
-        onCreateGroup={() => openConfirm(`Создать группу "${newGroupTitle}"?`, handleCreateGroup)}
-        onRequestJoin={(group) => openConfirm(`Вы хотите подать заявку в группу "${group.title}"?`, () => handleRequestJoin(group))}
+        onCreateGroup={handleCreateGroup}
+        onRequestJoin={handleRequestJoin}
         onOpenChat={(chatId) => {
           setSelectedChat(chatId);
           closeModals();
@@ -289,6 +314,7 @@ const ChatsPage = () => {
         onTitleChange={setNewGroupTitle}
         currentUserId={user.id}
         onConfirm={openConfirm}
+        onBack={backToChoice}
       />
 
       <GroupManageModal
