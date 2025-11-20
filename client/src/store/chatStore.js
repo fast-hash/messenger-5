@@ -9,6 +9,7 @@ const mapChat = (chat, currentUserId) => {
     ...chat,
     otherUser,
     isOnline: false,
+    notificationsEnabled: chat.notificationsEnabled ?? true,
   };
 };
 
@@ -95,7 +96,14 @@ export const useChatStore = create((set, get) => ({
     }));
   },
   async sendMessage(chatId, text) {
-    await messagesApi.sendMessage({ chatId, text });
+    const socket = get().socket;
+    if (socket) {
+      socket.emit('message:send', { chatId, text });
+      return;
+    }
+    const { message } = await messagesApi.sendMessage({ chatId, text });
+    get().addMessage(chatId, message);
+    get().updateChatLastMessage(chatId, message);
   },
   addMessage(chatId, message) {
     set((state) => {
@@ -151,6 +159,15 @@ export const useChatStore = create((set, get) => ({
         },
       };
     });
+  },
+  toggleNotifications(chatId) {
+    set((state) => ({
+      chats: state.chats.map((chat) =>
+        chat.id === chatId
+          ? { ...chat, notificationsEnabled: !(chat.notificationsEnabled ?? true) }
+          : chat
+      ),
+    }));
   },
   upsertChat(chat, currentUserId) {
     const mapped = mapChat(chat, currentUserId);

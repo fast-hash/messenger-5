@@ -1,4 +1,5 @@
 import PropTypes from 'prop-types';
+import { formatRole } from '../utils/roleLabels';
 
 const formatTime = (dateString) => {
   if (!dateString) return '';
@@ -32,12 +33,15 @@ const ChatList = ({ chats, selectedChatId, onSelect }) => {
                   <div>
                     <div className="chat-list__title">{chat.otherUser?.displayName || chat.otherUser?.username}</div>
                     <div className="chat-list__meta">
-                      {chat.otherUser?.role || 'staff'} · {chat.otherUser?.department || 'Отдел не указан'}
+                      {formatRole(chat.otherUser?.role)} · {chat.otherUser?.department || 'Отдел не указан'}
                     </div>
                   </div>
                   <span className="chat-list__time">{lastTime}</span>
                 </div>
-                <div className="chat-list__last">{lastMessage}</div>
+                <div className="chat-list__last">
+                  {lastMessage}
+                  {!chat.notificationsEnabled && <span className="muted-flag"> · без уведомлений</span>}
+                </div>
               </div>
             </button>
           </li>
@@ -59,6 +63,7 @@ ChatList.propTypes = {
       }),
       updatedAt: PropTypes.string,
       isOnline: PropTypes.bool,
+      notificationsEnabled: PropTypes.bool,
     })
   ).isRequired,
   selectedChatId: PropTypes.string,

@@ -183,6 +183,11 @@ button {
   white-space: nowrap;
 }
 
+.muted-flag {
+  color: #a0a0a0;
+  font-size: 12px;
+}
+
 .chat-window {
   flex: 1;
   display: flex;
@@ -197,6 +202,20 @@ button {
   align-items: center;
   padding-bottom: 8px;
   border-bottom: 1px solid #e5e7eb;
+}
+
+.chat-window__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.chat-window__settings {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #f7f9fc;
+  border-radius: 8px;
+  border: 1px solid #e4e9f2;
 }
 
 .chat-window__title {
@@ -388,6 +407,12 @@ button {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.choice-buttons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .search-list {

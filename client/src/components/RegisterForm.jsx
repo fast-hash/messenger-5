@@ -1,12 +1,6 @@
 import { useState } from 'react';
 import PropTypes from 'prop-types';
-
-const roles = [
-  { value: 'doctor', label: 'Врач' },
-  { value: 'nurse', label: 'Медсестра' },
-  { value: 'admin', label: 'Администратор' },
-  { value: 'staff', label: 'Сотрудник' },
-];
+import { ROLE_OPTIONS } from '../utils/roleLabels';
 
 const RegisterForm = ({ onSubmit, loading, error }) => {
   const [username, setUsername] = useState('');
@@ -44,7 +38,7 @@ const RegisterForm = ({ onSubmit, loading, error }) => {
       <label className="field">
         Роль
         <select value={role} onChange={(e) => setRole(e.target.value)}>
-          {roles.map((item) => (
+          {ROLE_OPTIONS.map((item) => (
             <option key={item.value} value={item.value}>
               {item.label}
             </option>

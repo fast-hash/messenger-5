@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
+import { formatRole } from '../utils/roleLabels';
 
 const formatTime = (isoString) => {
   try {
@@ -9,8 +10,13 @@ const formatTime = (isoString) => {
   }
 };
 
-const ChatWindow = ({ chat, messages, currentUserId, typingUsers }) => {
+const ChatWindow = ({ chat, messages, currentUserId, typingUsers, onToggleNotifications }) => {
   const listRef = useRef(null);
+  const [showSettings, setShowSettings] = useState(false);
+
+  useEffect(() => {
+    setShowSettings(false);
+  }, [chat.id]);
 
   useEffect(() => {
     if (listRef.current) {
@@ -29,9 +35,27 @@ const ChatWindow = ({ chat, messages, currentUserId, typingUsers }) => {
         <div>
           <div className="chat-window__title">{chat.otherUser?.displayName || chat.otherUser?.username}</div>
           <div className="chat-window__meta">
-            {chat.otherUser?.role || 'staff'} · {chat.otherUser?.department || 'Отдел не указан'} ·{' '}
+            {formatRole(chat.otherUser?.role)} · {chat.otherUser?.department || 'Отдел не указан'} ·{' '}
             {chat.isOnline ? 'онлайн' : 'офлайн'}
           </div>
+        </div>
+        <div className="chat-window__actions">
+          <button type="button" className="secondary-btn" onClick={() => setShowSettings((prev) => !prev)}>
+            Настройки
+          </button>
+          {showSettings && (
+            <div className="chat-window__settings">
+              <label className="field inline">
+                <input
+                  type="checkbox"
+                  checked={chat.notificationsEnabled}
+                  onChange={() => onToggleNotifications(chat.id)}
+                />
+                Уведомления по этому чату
+              </label>
+              <p className="muted small">Настройки уведомлений — простой задел. Полноценные push/desktop/email будут описаны в дипломе.</p>
+            </div>
+          )}
         </div>
       </div>
       <div className="chat-window__messages" ref={listRef}>
@@ -52,7 +76,12 @@ const ChatWindow = ({ chat, messages, currentUserId, typingUsers }) => {
 };
 
 ChatWindow.propTypes = {
-  chat: PropTypes.object.isRequired,
+  chat: PropTypes.shape({
+    id: PropTypes.string.isRequired,
+    otherUser: PropTypes.object,
+    isOnline: PropTypes.bool,
+    notificationsEnabled: PropTypes.bool,
+  }).isRequired,
   messages: PropTypes.arrayOf(
     PropTypes.shape({
       id: PropTypes.string.isRequired,
@@ -64,10 +93,12 @@ ChatWindow.propTypes = {
   ).isRequired,
   currentUserId: PropTypes.string.isRequired,
   typingUsers: PropTypes.arrayOf(PropTypes.string),
+  onToggleNotifications: PropTypes.func,
 };
 
 ChatWindow.defaultProps = {
   typingUsers: [],
+  onToggleNotifications: () => {},
 };
 
 export default ChatWindow;

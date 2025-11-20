@@ -8,6 +8,7 @@ import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
 import { createDirectChat } from '../api/chatApi';
 import { searchUsers } from '../api/usersApi';
+import { formatRole } from '../utils/roleLabels';
 
 const ChatsPage = () => {
   const navigate = useNavigate();
@@ -25,12 +26,14 @@ const ChatsPage = () => {
     reset,
     upsertChat,
     socket,
+    toggleNotifications,
   } = useChatStore();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [newChatStep, setNewChatStep] = useState(null); // choice | direct | group-info
+  const [groupMessage, setGroupMessage] = useState('');
 
   useEffect(() => {
     if (!user) {
@@ -57,13 +60,13 @@ const ChatsPage = () => {
     const { chat } = await createDirectChat({ otherUserId });
     upsertChat(chat, user.id);
     setSelectedChat(chat.id);
-    setIsSearchOpen(false);
+    setNewChatStep(null);
     setSearchTerm('');
     setSearchResults([]);
   };
 
   useEffect(() => {
-    if (!isSearchOpen) return;
+    if (newChatStep !== 'direct') return;
     if (!searchTerm.trim()) {
       setSearchResults([]);
       return;
@@ -81,9 +84,18 @@ const ChatsPage = () => {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchTerm, isSearchOpen]);
+  }, [searchTerm, newChatStep]);
 
   const typingUsers = useMemo(() => typing[selectedChatId] || [], [typing, selectedChatId]);
+
+  const canCreateGroup = user && (user.role === 'doctor' || user.role === 'admin');
+
+  const closeNewChatModal = () => {
+    setNewChatStep(null);
+    setSearchTerm('');
+    setSearchResults([]);
+    setGroupMessage('');
+  };
 
   const header = (
     <div className="header-content">
@@ -95,7 +107,7 @@ const ChatsPage = () => {
         <div>
           <div className="user-name">{user.displayName || user.username}</div>
           <div className="user-meta">
-            {user.role || 'staff'} · {user.department || 'Отдел не указан'}
+            {formatRole(user.role)} · {user.department || 'Отдел не указан'}
           </div>
         </div>
         <button
@@ -116,7 +128,7 @@ const ChatsPage = () => {
   const sidebar = (
     <div className="sidebar">
       <div className="sidebar__top">
-        <button type="button" className="primary-btn" onClick={() => setIsSearchOpen(true)}>
+        <button type="button" className="primary-btn" onClick={() => setNewChatStep('choice')}>
           Новый чат
         </button>
       </div>
@@ -124,32 +136,58 @@ const ChatsPage = () => {
     </div>
   );
 
-  return (
-    <Layout header={header} sidebar={sidebar}>
-      {selectedChat && (
-        <>
-          <ChatWindow
-            chat={selectedChat}
-            messages={messages[selectedChatId] || []}
-            currentUserId={user.id}
-            typingUsers={typingUsers}
-          />
-          <MessageInput
-            disabled={!socket}
-            onSend={(text) => sendMessage(selectedChatId, text)}
-            onTypingStart={() => socket?.emit('typing:start', { chatId: selectedChatId })}
-            onTypingStop={() => socket?.emit('typing:stop', { chatId: selectedChatId })}
-          />
-        </>
-      )}
-      {!selectedChat && <div className="empty-state">Выберите чат или создайте новый.</div>}
+  const renderNewChatModal = () => {
+    if (!newChatStep) return null;
 
-      {isSearchOpen && (
-        <div className="modal-backdrop" onClick={() => setIsSearchOpen(false)}>
+    if (newChatStep === 'choice') {
+      return (
+        <div className="modal-backdrop" onClick={closeNewChatModal}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal__header">
               <h3>Новый чат</h3>
-              <button type="button" className="secondary-btn" onClick={() => setIsSearchOpen(false)}>
+              <button type="button" className="secondary-btn" onClick={closeNewChatModal}>
+                Закрыть
+              </button>
+            </div>
+            <p className="muted">Выберите тип диалога. Групповые чаты пока в разработке (описание в дипломе).</p>
+            <div className="choice-buttons">
+              <button type="button" className="primary-btn" onClick={() => setNewChatStep('direct')}>
+                Личный чат
+              </button>
+              <button
+                type="button"
+                className="secondary-btn"
+                disabled={!canCreateGroup}
+                title={
+                  canCreateGroup ? 'Группа' : 'Создавать групповые чаты может только врач или администратор системы.'
+                }
+                onClick={() => {
+                  if (!canCreateGroup) {
+                    setGroupMessage('Создавать групповые чаты может только врач или администратор системы.');
+                  } else {
+                    setGroupMessage(
+                      'Групповой чат находится в разработке и будет реализован на следующем этапе. Подробности см. в разделе диплома о расширении функционала.'
+                    );
+                  }
+                  setNewChatStep('group-info');
+                }}
+              >
+                Группа
+              </button>
+            </div>
+            {!canCreateGroup && <p className="muted small">Доступ к созданию групп есть только у врача или администратора.</p>}
+          </div>
+        </div>
+      );
+    }
+
+    if (newChatStep === 'direct') {
+      return (
+        <div className="modal-backdrop" onClick={closeNewChatModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__header">
+              <h3>Личный чат</h3>
+              <button type="button" className="secondary-btn" onClick={closeNewChatModal}>
                 Закрыть
               </button>
             </div>
@@ -174,7 +212,7 @@ const ChatsPage = () => {
                   >
                     <div className="search-list__name">{item.displayName || item.username}</div>
                     <div className="search-list__meta">
-                      {item.role || 'staff'} · {item.department || 'Отдел не указан'} · {item.email}
+                      {formatRole(item.role)} · {item.department || 'Отдел не указан'} · {item.email}
                     </div>
                   </button>
                 </li>
@@ -182,7 +220,55 @@ const ChatsPage = () => {
             </ul>
           </div>
         </div>
+      );
+    }
+
+    if (newChatStep === 'group-info') {
+      return (
+        <div className="modal-backdrop" onClick={closeNewChatModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__header">
+              <h3>Групповой чат</h3>
+              <button type="button" className="secondary-btn" onClick={closeNewChatModal}>
+                Закрыть
+              </button>
+            </div>
+            <p>{groupMessage}</p>
+            <p className="muted small">
+              {/* Пока только UI-заготовка: полноценные группы (создатель врач/админ, управление участниками) будут добавлены на следующем этапе и описаны в дипломе. */}
+              Сейчас реализован только интерфейс выбора. Полное поведение (создатель — врач/админ, набор участников, права)
+              описывается в пояснительной записке и будет добавлено на следующем этапе.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  return (
+    <Layout header={header} sidebar={sidebar}>
+      {selectedChat && (
+        <>
+          <ChatWindow
+            chat={selectedChat}
+            messages={messages[selectedChatId] || []}
+            currentUserId={user.id}
+            typingUsers={typingUsers}
+            onToggleNotifications={toggleNotifications}
+          />
+          <MessageInput
+            disabled={!socket}
+            onSend={(text) => sendMessage(selectedChatId, text)}
+            onTypingStart={() => socket?.emit('typing:start', { chatId: selectedChatId })}
+            onTypingStop={() => socket?.emit('typing:stop', { chatId: selectedChatId })}
+          />
+        </>
       )}
+      {!selectedChat && <div className="empty-state">Выберите чат или создайте новый.</div>}
+
+      {renderNewChatModal()}
     </Layout>
   );
 };
