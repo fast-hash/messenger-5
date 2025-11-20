@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ChatsPage from './pages/ChatsPage';
 import { useAuthStore } from './store/authStore';
+import { initNotificationSound } from './utils/notifications';
 import './styles.css';
 
 const AppContent = () => {
@@ -12,6 +13,7 @@ const AppContent = () => {
 
   useEffect(() => {
     fetchCurrentUser();
+    initNotificationSound();
   }, [fetchCurrentUser]);
 
   if (loading) {

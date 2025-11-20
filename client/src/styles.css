@@ -175,6 +175,22 @@ button {
   color: #9ca3af;
 }
 
+.chat-list__time-block {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-list__badge {
+  background: #ef4444;
+  color: #fff;
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 12px;
+  min-width: 20px;
+  text-align: center;
+}
+
 .chat-list__last {
   font-size: 13px;
   color: #4b5563;
