@@ -36,21 +36,26 @@ const GroupManageModal = ({ isOpen, chatId, onClose, users, onUpdated, openConfi
   if (!isOpen) return null;
 
   const handleRename = async () => {
-    await renameGroup(chatId, title);
-    await load();
+    try {
+      await renameGroup(chatId, title);
+      await load();
+    } catch (err) {
+      console.error(err);
+      setError('Не удалось сохранить название группы');
+    }
   };
 
   const handleAdd = async () => {
     if (!selectedToAdd.length) return;
     const userId = selectedToAdd[0];
-    await addParticipant(chatId, userId);
-    setSelectedToAdd([]);
-    await load();
+      setError('Не удалось добавить участника. Попробуйте ещё раз.');
+    } finally {
+      setSelectedToAdd([]);
+    }
   };
 
   const handleRemove = async (participant) => {
     openConfirm(
-      `Удалить участника ${participant.displayName || participant.username} из группы?`,
       async () => {
         await removeParticipant(chatId, participant.id);
         await load();
@@ -59,13 +64,23 @@ const GroupManageModal = ({ isOpen, chatId, onClose, users, onUpdated, openConfi
   };
 
   const handleApprove = async (req) => {
-    await approveJoin(chatId, req.id);
-    await load();
+    try {
+      await approveJoin(chatId, req.id);
+      await load();
+    } catch (err) {
+      console.error(err);
+      setError('Не удалось принять заявку');
+    }
   };
 
   const handleReject = async (req) => {
-    await rejectJoin(chatId, req.id);
-    await load();
+    try {
+      await rejectJoin(chatId, req.id);
+      await load();
+    } catch (err) {
+      console.error(err);
+      setError('Не удалось отклонить заявку');
+    }
   };
 
   return (

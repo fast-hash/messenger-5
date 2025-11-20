@@ -45,6 +45,10 @@ npm install
 ```powershell
 cd ..
 docker compose up -d
+
+# если в базе уже есть повреждённые записи старых групп, выполните очистку
+cd server
+npm run fix-chats
 ```
 
 ## 4. Запуск backend
@@ -83,7 +87,7 @@ curl -i -X POST http://localhost:3000/api/auth/login ^
 
 - `server/` — Express + MongoDB API, Socket.IO, слои моделей/сервисов/роутов с абстракцией шифрования
 - `client/` — Vite + React UI, Zustand, Socket.IO клиент
-- `docker-compose.yml` — MongoDB 8.0 для локальной разработки
+- `docker-compose.yml` — MongoDB 8.0 для локальной разработки (имя контейнера не фиксируется, чтобы не конфликтовать с другими проектами)
 
 ## 7. Что увидеть в интерфейсе
 
