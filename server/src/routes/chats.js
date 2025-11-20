@@ -132,4 +132,12 @@ router.post(
   })
 );
 
+router.post(
+  '/:id/read',
+  asyncHandler(async (req, res) => {
+    await chatService.markChatRead({ chatId: req.params.id, userId: req.user.id });
+    res.json({ ok: true });
+  })
+);
+
 module.exports = router;

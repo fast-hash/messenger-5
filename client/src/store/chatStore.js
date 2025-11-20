@@ -2,11 +2,13 @@ import { create } from 'zustand';
 import { io } from 'socket.io-client';
 import * as chatApi from '../api/chatApi';
 import * as messagesApi from '../api/messagesApi';
+import { playIncomingSound, showBrowserNotification } from '../utils/notifications';
 
 const mapChat = (chat, currentUserId) => {
   const base = {
     ...chat,
     notificationsEnabled: chat.notificationsEnabled ?? true,
+    unreadCount: chat.unreadCount ?? 0,
   };
 
   if (chat.type === 'group') {
@@ -43,6 +45,30 @@ export const useChatStore = create((set, get) => ({
     socket.on('message:new', ({ message }) => {
       get().addMessage(message.chatId, message);
       get().updateChatLastMessage(message.chatId, message);
+      const state = get();
+      const isOwn = message.senderId === currentUserId;
+      const isCurrent = state.selectedChatId === message.chatId;
+      if (!isOwn && !isCurrent) {
+        const chat = state.chats.find((c) => c.id === message.chatId);
+        const nextCount = (chat?.unreadCount || 0) + 1;
+        state.setChatUnreadCount(message.chatId, nextCount);
+      }
+
+      const chatState = state.chats.find((c) => c.id === message.chatId);
+      const notificationsEnabled = chatState?.notificationsEnabled !== false;
+      if (!isOwn && notificationsEnabled) {
+        playIncomingSound();
+
+        if (document.hidden || !isCurrent) {
+          const title =
+            chatState?.type === 'group'
+              ? `Новое сообщение в группе "${chatState?.title || 'Группа'}"`
+              : `Новое сообщение от ${message.senderName || 'сотрудника'}`;
+          const body = message.text;
+          const tag = `chat-${message.chatId}`;
+          showBrowserNotification({ title, body, tag });
+        }
+      }
     });
 
     socket.on('presence:online', ({ userId }) => {
@@ -91,13 +117,21 @@ export const useChatStore = create((set, get) => ({
       mapped.forEach((chat) => socket.emit('chats:join', { chatId: chat.id }));
     }
   },
-  setSelectedChat(chatId) {
+  async setSelectedChat(chatId) {
     const socket = get().socket;
     const chat = get().chats.find((c) => c.id === chatId);
     if (socket && chatId && chat && !chat.removed) {
       socket.emit('chats:join', { chatId });
     }
     set({ selectedChatId: chatId });
+    if (chatId) {
+      get().setChatUnreadCount(chatId, 0);
+      try {
+        await chatApi.markChatRead(chatId);
+      } catch (e) {
+        console.error('Не удалось отметить чат прочитанным', e);
+      }
+    }
   },
   async loadMessages(chatId) {
     const { messages } = await messagesApi.getMessages(chatId);
@@ -149,6 +183,13 @@ export const useChatStore = create((set, get) => ({
       updatedChats.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
       return { chats: updatedChats };
     });
+  },
+  setChatUnreadCount(chatId, unreadCount) {
+    set((state) => ({
+      chats: state.chats.map((chat) =>
+        chat.id === chatId ? { ...chat, unreadCount } : chat
+      ),
+    }));
   },
   updateUserPresence(userId, isOnline) {
     set((state) => ({

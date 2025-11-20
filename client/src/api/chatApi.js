@@ -54,3 +54,8 @@ export const rejectJoin = async (chatId, userId) => {
   const { data } = await httpClient.post(`/api/chats/${chatId}/join-requests/${userId}/reject`);
   return data;
 };
+
+export const markChatRead = async (chatId) => {
+  const { data } = await httpClient.post(`/api/chats/${chatId}/read`);
+  return data;
+};

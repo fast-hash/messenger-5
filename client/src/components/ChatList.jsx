@@ -48,7 +48,10 @@ const ChatList = ({ chats, selectedChatId, onSelect }) => {
                       </div>
                     )}
                   </div>
-                  <span className="chat-list__time">{lastTime}</span>
+                  <div className="chat-list__time-block">
+                    <span className="chat-list__time">{lastTime}</span>
+                    {chat.unreadCount > 0 && <span className="chat-list__badge">{chat.unreadCount}</span>}
+                  </div>
                 </div>
                 <div className="chat-list__last">
                   {lastMessage}
@@ -79,6 +82,7 @@ ChatList.propTypes = {
       updatedAt: PropTypes.string,
       isOnline: PropTypes.bool,
       notificationsEnabled: PropTypes.bool,
+      unreadCount: PropTypes.number,
     })
   ).isRequired,
   selectedChatId: PropTypes.string,

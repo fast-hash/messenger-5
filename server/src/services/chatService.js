@@ -1,5 +1,6 @@
 const Chat = require('../models/Chat');
 const User = require('../models/User');
+const Message = require('../models/Message');
 
 const buildParticipantsKey = (userIdA, userIdB) => {
   const [first, second] = [userIdA.toString(), userIdB.toString()].sort();
@@ -38,7 +39,19 @@ const toChatDto = (chatDoc, currentUserId) => ({
   updatedAt: chatDoc.updatedAt,
   removed:
     currentUserId && (chatDoc.removedFor || []).some((id) => id.toString() === currentUserId.toString()),
+  notificationsEnabled: chatDoc.notificationsEnabled !== false,
 });
+
+const computeUnreadCount = async (chat, userId) => {
+  const state = (chat.readState || []).find((entry) => entry.user && entry.user.toString() === userId.toString());
+  const lastReadAt = state ? state.lastReadAt : null;
+
+  if (!lastReadAt) {
+    return Message.countDocuments({ chat: chat._id });
+  }
+
+  return Message.countDocuments({ chat: chat._id, createdAt: { $gt: lastReadAt } });
+};
 
 const getOrCreateDirectChat = async ({ userId, otherUserId }) => {
   if (!userId || !otherUserId) {
@@ -75,7 +88,15 @@ const getUserChats = async ({ userId }) => {
     .populate('participants')
     .populate('admins');
 
-  return chats.map((chat) => toChatDto(chat, userId));
+  const withUnread = await Promise.all(
+    chats.map(async (chat) => {
+      const dto = toChatDto(chat, userId);
+      dto.unreadCount = await computeUnreadCount(chat, userId);
+      return dto;
+    })
+  );
+
+  return withUnread;
 };
 
 const createGroupChat = async ({ title, creatorId, participantIds = [] }) => {
@@ -296,6 +317,27 @@ const groupRejectRequest = async ({ chatId, adminId, userId }) => {
   return getGroupDetails({ chatId, userId: adminId });
 };
 
+const markChatRead = async ({ chatId, userId }) => {
+  const chat = await Chat.findById(chatId);
+  if (!chat) {
+    const error = new Error('Чат не найден');
+    error.status = 404;
+    throw error;
+  }
+
+  const now = new Date();
+  const existing = (chat.readState || []).find((entry) => entry.user && entry.user.toString() === userId.toString());
+
+  if (existing) {
+    existing.lastReadAt = now;
+  } else {
+    chat.readState.push({ user: userId, lastReadAt: now });
+  }
+
+  await chat.save();
+  return { ok: true };
+};
+
 module.exports = {
   getOrCreateDirectChat,
   getUserChats,
@@ -308,4 +350,5 @@ module.exports = {
   groupRequestJoin,
   groupApproveRequest,
   groupRejectRequest,
+  markChatRead,
 };

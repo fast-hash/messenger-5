@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { formatRole } from '../utils/roleLabels';
+import { ensureNotificationPermission } from '../utils/notifications';
 
 const formatTime = (isoString) => {
   try {
@@ -64,7 +65,12 @@ const ChatWindow = ({ chat, messages, currentUserId, typingUsers, onToggleNotifi
                 <input
                   type="checkbox"
                   checked={chat.notificationsEnabled}
-                  onChange={() => onToggleNotifications(chat.id)}
+                  onChange={async () => {
+                    if (!chat.notificationsEnabled) {
+                      await ensureNotificationPermission();
+                    }
+                    onToggleNotifications(chat.id);
+                  }}
                 />
                 Получать уведомления по этому чату
               </label>

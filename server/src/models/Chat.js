@@ -52,6 +52,12 @@ const chatSchema = new mongoose.Schema(
         default: [],
       },
     ],
+    readState: [
+      {
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        lastReadAt: { type: Date, default: null },
+      },
+    ],
     lastMessage: {
       text: { type: String, default: null },
       sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
