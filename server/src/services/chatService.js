@@ -2,6 +2,25 @@ const mongoose = require('mongoose');
 const Chat = require('../models/Chat');
 const User = require('../models/User');
 const Message = require('../models/Message');
+const { Types } = mongoose;
+
+const toObjectId = (value) => {
+  if (!value) return null;
+
+  if (value instanceof Types.ObjectId) {
+    return value;
+  }
+
+  if (typeof value === 'object' && value._id) {
+    return toObjectId(value._id);
+  }
+
+  if (typeof value === 'string' && Types.ObjectId.isValid(value)) {
+    return new Types.ObjectId(value);
+  }
+
+  throw new Error(`Invalid ObjectId value: ${JSON.stringify(value)}`);
+};
 
 const buildParticipantsKey = (userIdA, userIdB) => {
   const [first, second] = [userIdA.toString(), userIdB.toString()].sort();
@@ -21,14 +40,21 @@ const mapUser = (user) => ({
 const findReadState = (chatDoc, userId) =>
   (chatDoc.readState || []).find((entry) => entry.user && entry.user.toString() === userId.toString());
 
-const normalizeObjectIds = (list = []) =>
-  Array.from(
-    new Set(
-      list
-        .filter((value) => value && mongoose.isValidObjectId(value))
-        .map((value) => value.toString())
-    )
-  ).map((id) => new mongoose.Types.ObjectId(id));
+const normalizeObjectIds = (list = []) => {
+  const arr = Array.isArray(list) ? list : [list];
+  const normalized = arr
+    .map((value) => {
+      try {
+        return toObjectId(value);
+      } catch (e) {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .map((id) => id.toString());
+
+  return Array.from(new Set(normalized)).map((id) => new Types.ObjectId(id));
+};
 
 const cleanJoinRequests = (requests = []) =>
   requests.filter((req) => req && req.user && mongoose.isValidObjectId(req.user));
@@ -241,12 +267,16 @@ const ensureGroupAdmin = (chat, adminId) => {
 };
 
 const groupAddParticipant = async ({ chatId, adminId, userId }) => {
-  if (!userId || !mongoose.isValidObjectId(userId)) {
+  let participantObjectId;
+  try {
+    participantObjectId = toObjectId(userId);
+  } catch (e) {
     const error = new Error('Некорректный идентификатор пользователя для добавления');
     error.status = 400;
     throw error;
   }
-  const chat = await Chat.findById(chatId)
+
+  const chat = await Chat.findById(toObjectId(chatId))
     .populate('participants')
     .populate('admins')
     .populate('joinRequests.user');
@@ -258,14 +288,22 @@ const groupAddParticipant = async ({ chatId, adminId, userId }) => {
 
   ensureGroupAdmin(chat, adminId);
 
-  const joinRequests = (chat.joinRequests || []).filter(
-    (req) => req.user && req.user.toString() !== userId.toString()
+  const hasParticipant = (chat.participants || []).some((p) =>
+    p instanceof Types.ObjectId
+      ? p.equals(participantObjectId)
+      : p._id
+      ? p._id.equals(participantObjectId)
+      : p.toString() === participantObjectId.toString()
   );
-  const currentParticipants = normalizeObjectIds(chat.participants);
-  const nextParticipants = normalizeObjectIds([...currentParticipants, userId]);
 
-  chat.joinRequests = cleanJoinRequests(joinRequests);
-  chat.participants = nextParticipants;
+  if (!hasParticipant) {
+    chat.participants.push(participantObjectId);
+  }
+
+  chat.joinRequests = cleanJoinRequests(chat.joinRequests).filter(
+    (req) => req.user && req.user.toString() !== participantObjectId.toString()
+  );
+
   await chat.save();
   await chat.populate([
     { path: 'participants', select: 'username email displayName role department jobTitle' },
@@ -277,12 +315,16 @@ const groupAddParticipant = async ({ chatId, adminId, userId }) => {
 };
 
 const groupRemoveParticipant = async ({ chatId, adminId, userId }) => {
-  if (!userId || !mongoose.isValidObjectId(userId)) {
+  let participantObjectId;
+  try {
+    participantObjectId = toObjectId(userId);
+  } catch (e) {
     const error = new Error('Некорректный идентификатор пользователя для удаления');
     error.status = 400;
     throw error;
   }
-  const chat = await Chat.findById(chatId)
+
+  const chat = await Chat.findById(toObjectId(chatId))
     .populate('participants')
     .populate('admins')
     .populate('joinRequests.user');
@@ -294,17 +336,21 @@ const groupRemoveParticipant = async ({ chatId, adminId, userId }) => {
 
   ensureGroupAdmin(chat, adminId);
 
-  if (adminId.toString() === userId.toString()) {
+  if (adminId.toString() === participantObjectId.toString()) {
     const error = new Error('Нельзя удалить себя');
     error.status = 400;
     throw error;
   }
 
-  const cleanedParticipants = normalizeObjectIds(chat.participants).filter(
-    (p) => p.toString() !== userId.toString()
+  chat.participants = (chat.participants || []).filter((p) => {
+    if (p instanceof Types.ObjectId) return !p.equals(participantObjectId);
+    if (p._id) return !p._id.equals(participantObjectId);
+    return p.toString() !== participantObjectId.toString();
+  });
+
+  chat.removedFor = Array.from(
+    new Set([...(chat.removedFor || []).map((id) => id.toString()), participantObjectId.toString()])
   );
-  chat.participants = cleanedParticipants;
-  chat.removedFor = Array.from(new Set([...(chat.removedFor || []).map((id) => id.toString()), userId.toString()]));
   await chat.save();
   await chat.populate([
     { path: 'participants', select: 'username email displayName role department jobTitle' },
