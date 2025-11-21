@@ -48,6 +48,11 @@ const GroupManageModal = ({ isOpen, chatId, onClose, users, onUpdated, openConfi
   const handleAdd = async () => {
     if (!selectedToAdd.length) return;
     const userId = selectedToAdd[0];
+    try {
+      await addParticipant(chatId, userId);
+      await load();
+    } catch (err) {
+      console.error(err);
       setError('Не удалось добавить участника. Попробуйте ещё раз.');
     } finally {
       setSelectedToAdd([]);
@@ -56,6 +61,7 @@ const GroupManageModal = ({ isOpen, chatId, onClose, users, onUpdated, openConfi
 
   const handleRemove = async (participant) => {
     openConfirm(
+      `Удалить участника ${participant.displayName || participant.username} из группы?`,
       async () => {
         await removeParticipant(chatId, participant.id);
         await load();

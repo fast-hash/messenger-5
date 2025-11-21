@@ -2,14 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { formatRole } from '../utils/roleLabels';
 import { ensureNotificationPermission } from '../utils/notifications';
-
-const formatTime = (isoString) => {
-  try {
-    return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  } catch (error) {
-    return '';
-  }
-};
+import { formatMessageDate } from '../utils/dateUtils';
 
 const ChatWindow = ({
   chat,
@@ -114,7 +107,11 @@ const ChatWindow = ({
           const isMine = message.senderId === currentUserId;
           const sender = message.sender || {};
           const authorName = sender.displayName || sender.username || 'Участник';
-          const authorMeta = formatRole(sender.role) + (sender.department ? ` · ${sender.department}` : '');
+          const metaParts = [];
+          const formattedRole = formatRole(sender.role);
+          if (formattedRole) metaParts.push(formattedRole);
+          if (sender.department) metaParts.push(sender.department);
+          const authorMeta = metaParts.join(' · ');
 
           return (
             <div key={message.id}>
@@ -123,17 +120,15 @@ const ChatWindow = ({
                   <span>Непрочитанные сообщения</span>
                 </div>
               )}
-              <div className={`message-row ${isMine ? 'message-row--mine' : ''}`}>
-                {chat.type === 'group' && !isMine && (
+              <div className={`message-row ${isMine ? 'message-row--mine' : 'message-row--incoming'}`}>
+                <div className="message-content">
                   <div className="message-author">
                     <span className="message-author__name">{authorName}</span>
-                    <span className="message-author__meta">{authorMeta}</span>
+                    {authorMeta && <span className="message-author__meta">{authorMeta}</span>}
                   </div>
-                )}
-                <div className={`message-bubble ${isMine ? 'message-own' : 'message-incoming'}`}>
                   <div className="message-text">{message.text}</div>
-                  <div className="message-time">{formatTime(message.createdAt)}</div>
                 </div>
+                <div className="message-time">{formatMessageDate(message.createdAt)}</div>
               </div>
             </div>
           );
