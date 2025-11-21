@@ -98,9 +98,8 @@ const setupSockets = (httpServer) => {
         const isParticipant = chat.participants
           .map((id) => id.toString())
           .includes(socket.user.id.toString());
-        const isRemoved = (chat.removedFor || []).some((id) => id.toString() === socket.user.id.toString());
 
-        if (!isParticipant || isRemoved) {
+        if (!isParticipant) {
           return;
         }
 

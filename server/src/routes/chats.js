@@ -133,10 +133,32 @@ router.post(
 );
 
 router.post(
+  '/:id/block',
+  asyncHandler(async (req, res) => {
+    const chat = await chatService.blockUserInDirectChat({
+      chatId: req.params.id,
+      blockerId: req.user.id,
+    });
+    res.json({ chat });
+  })
+);
+
+router.delete(
+  '/:id/block',
+  asyncHandler(async (req, res) => {
+    const chat = await chatService.unblockUserInDirectChat({
+      chatId: req.params.id,
+      blockerId: req.user.id,
+    });
+    res.json({ chat });
+  })
+);
+
+router.post(
   '/:id/read',
   asyncHandler(async (req, res) => {
-    await chatService.markChatRead({ chatId: req.params.id, userId: req.user.id });
-    res.json({ ok: true });
+    const result = await chatService.markChatRead({ chatId: req.params.id, userId: req.user.id });
+    res.json(result);
   })
 );
 
