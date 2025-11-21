@@ -10,6 +10,7 @@ const mapChat = (chat, currentUserId) => {
     notificationsEnabled: chat.notificationsEnabled ?? true,
     unreadCount: chat.unreadCount ?? 0,
     lastReadAt: chat.lastReadAt || null,
+    blocks: chat.blocks || [],
   };
 
   if (chat.type === 'group') {
@@ -141,13 +142,18 @@ export const useChatStore = create((set, get) => ({
     }
   },
   async loadMessages(chatId) {
-    const { messages } = await messagesApi.getMessages(chatId);
+    const { messages, lastReadAt } = await messagesApi.getMessages(chatId);
     set((state) => ({
       messages: {
         ...state.messages,
         [chatId]: messages,
       },
     }));
+    if (lastReadAt) {
+      set((state) => ({
+        chats: state.chats.map((chat) => (chat.id === chatId ? { ...chat, lastReadAt } : chat)),
+      }));
+    }
   },
   async sendMessage(chatId, text) {
     const socket = get().socket;

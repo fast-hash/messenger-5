@@ -10,7 +10,14 @@ import GroupManageModal from '../components/GroupManageModal';
 import UserPicker from '../components/UserPicker';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
-import { createDirectChat, createGroupChat, listGroups, requestJoin } from '../api/chatApi';
+import {
+  createDirectChat,
+  createGroupChat,
+  listGroups,
+  requestJoin,
+  blockDirectChat,
+  unblockDirectChat,
+} from '../api/chatApi';
 import { searchUsers } from '../api/usersApi';
 import { formatRole } from '../utils/roleLabels';
 
@@ -176,6 +183,29 @@ const ChatsPage = () => {
   };
 
   const openManageModal = async (chatId) => {
+    const chat = chats.find((c) => c.id === chatId);
+    if (chat?.type === 'direct') {
+      const other = (chat.participants || []).find((p) => p.id !== user.id);
+      const isBlockedByMe = (chat.blocks || []).some((b) => b.by === user.id && b.target === other?.id);
+      openConfirm({
+        text: isBlockedByMe
+          ? 'Вы заблокировали этого пользователя. Снять блокировку?' 
+          : 'Вы можете заблокировать этого пользователя. В этом случае оба участника не смогут отправлять сообщения в этом чате.',
+        action: async () => {
+          try {
+            const apiCall = isBlockedByMe ? unblockDirectChat : blockDirectChat;
+            const { chat: updated } = await apiCall(chatId);
+            upsertChat(updated, user.id);
+          } catch (error) {
+            console.error('Не удалось обновить блокировку', error);
+            // eslint-disable-next-line no-alert
+            alert('Не удалось обновить блокировку. Попробуйте позже.');
+          }
+        },
+      });
+      return;
+    }
+
     await ensureUsersLoaded();
     setManageChatId(chatId);
   };
@@ -237,14 +267,35 @@ const ChatsPage = () => {
             onToggleNotifications={toggleNotifications}
             onOpenManage={openManageModal}
           />
-          <MessageInput
-            disabled={!socket || (selectedChat.type === 'group' && selectedChat.removed)}
-            onSend={(text) => sendMessage(selectedChatId, text)}
-            onTypingStart={() =>
-              !selectedChat.removed && socket?.emit('typing:start', { chatId: selectedChatId })
+          {(() => {
+            const isGroupRemoved =
+              selectedChat.type === 'group' &&
+              !(selectedChat.participants || []).some((p) => p.id === user.id);
+            const otherParticipant =
+              selectedChat.type === 'direct'
+                ? (selectedChat.participants || []).find((p) => p.id !== user.id)
+                : null;
+            const isBlockedByMe =
+              selectedChat.type === 'direct' &&
+              (selectedChat.blocks || []).some((b) => b.by === user.id && b.target === otherParticipant?.id);
+            const isBlockedMe =
+              selectedChat.type === 'direct' &&
+              (selectedChat.blocks || []).some((b) => b.target === user.id && b.by === otherParticipant?.id);
+            const blocked = selectedChat.type === 'direct' && (isBlockedByMe || isBlockedMe);
+
+            if (isGroupRemoved || blocked) {
+              return null;
             }
-            onTypingStop={() => !selectedChat.removed && socket?.emit('typing:stop', { chatId: selectedChatId })}
-          />
+
+            return (
+              <MessageInput
+                disabled={!socket}
+                onSend={(text) => sendMessage(selectedChatId, text)}
+                onTypingStart={() => socket?.emit('typing:start', { chatId: selectedChatId })}
+                onTypingStop={() => socket?.emit('typing:stop', { chatId: selectedChatId })}
+              />
+            );
+          })()}
         </div>
       )}
       {!selectedChat && <div className="empty-state">Выберите чат или создайте новый.</div>}

@@ -3,16 +3,19 @@ const Message = require('../models/Message');
 const cryptoService = require('./crypto/cryptoService');
 
 const ensureParticipant = (chatDoc, userId, { allowRemoved = false } = {}) => {
-  const participantIds = chatDoc.participants.map((id) => id.toString());
-  const removedIds = (chatDoc.removedFor || []).map((id) => id.toString());
+  const participantIds = (chatDoc.participants || []).map((id) => id.toString());
   const idStr = userId.toString();
 
   if (participantIds.includes(idStr)) {
     return;
   }
 
-  if (allowRemoved && removedIds.includes(idStr)) {
-    return;
+  if (allowRemoved) {
+    const removedEntries = (chatDoc.removedFor || []).filter((entry) => entry && entry.user);
+    const latest = removedEntries
+      .filter((entry) => entry.user.toString() === idStr)
+      .sort((a, b) => new Date(b.removedAt || 0) - new Date(a.removedAt || 0))[0];
+    if (latest) return;
   }
 
   const error = new Error('Not authorized for this chat');
@@ -64,8 +67,17 @@ const sendMessage = async ({ chatId, senderId, text }) => {
     throw error;
   }
 
-  if (chat.type === 'group' && (chat.removedFor || []).some((id) => id.toString() === senderId.toString())) {
+  if (chat.type === 'group' && !chat.participants.map((p) => p.toString()).includes(senderId.toString())) {
     const error = new Error('Вы больше не являетесь участником группы');
+    error.status = 403;
+    throw error;
+  }
+
+  if (chat.type === 'direct' && (chat.blocks || []).some((b) =>
+    (b.by && b.target && b.by.toString() === senderId.toString()) ||
+    (b.by && b.target && b.target.toString() === senderId.toString())
+  )) {
+    const error = new Error('Диалог заблокирован');
     error.status = 403;
     throw error;
   }
@@ -117,18 +129,42 @@ const getMessagesForChat = async ({ chatId, viewerId }) => {
 
   ensureParticipant(chat, viewerId, { allowRemoved: true });
 
+  const removalWindows = (chat.removedFor || [])
+    .filter((entry) => entry && entry.user && entry.user.toString() === viewerId.toString())
+    .map((entry) => ({
+      start: new Date(entry.removedAt || 0),
+      end: entry.rejoinedAt ? new Date(entry.rejoinedAt) : null,
+    }));
+
   const messages = await Message.find({ chat: chatId })
     .sort({ createdAt: 1 })
     .populate('sender');
 
   const results = [];
   for (const message of messages) {
+    const inRemovedInterval = removalWindows.some((window) => {
+      if (!window.end) {
+        return message.createdAt >= window.start;
+      }
+      return message.createdAt >= window.start && message.createdAt < window.end;
+    });
+    if (inRemovedInterval) {
+      // Пропускаем сообщения, отправленные в период отсутствия пользователя в группе
+      // или после удаления, чтобы не возвращать недоступные сообщения при повторном добавлении.
+      // eslint-disable-next-line no-continue
+      continue;
+    }
+
     // eslint-disable-next-line no-await-in-loop
     const safeText = await cryptoService.decrypt(message, { viewerId });
     results.push(toMessageDto(message, safeText));
   }
 
-  return results;
+  const readEntry = (chat.readState || []).find(
+    (entry) => entry.user && entry.user.toString() === viewerId.toString()
+  );
+
+  return { messages: results, lastReadAt: readEntry ? readEntry.lastReadAt : null };
 };
 
 module.exports = {

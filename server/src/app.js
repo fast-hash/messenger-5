@@ -8,6 +8,7 @@ const authRoutes = require('./routes/auth');
 const chatsRoutes = require('./routes/chats');
 const messagesRoutes = require('./routes/messages');
 const usersRoutes = require('./routes/users');
+const adminRoutes = require('./routes/admin');
 const errorHandler = require('./middleware/error');
 
 const app = express();
@@ -27,6 +28,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/chats', chatsRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.use(errorHandler);
 

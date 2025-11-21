@@ -22,17 +22,24 @@ const ChatWindow = ({
   }, [chat.id]);
 
   useEffect(() => {
-    if (!chat) return;
-    if (firstUnreadMessageId) return;
+    if (!chat || firstUnreadMessageId) return;
 
-    const unreadCount = chat.unreadCount || 0;
-    if (!unreadCount || !messages.length) return;
+    const lastRead = chat.lastReadAt ? new Date(chat.lastReadAt) : null;
+    if (!lastRead) return;
 
-    const index = messages.length - unreadCount;
-    if (index >= 0 && index < messages.length) {
-      setFirstUnreadMessageId(messages[index].id || messages[index]._id);
+    const firstUnread = messages.find((message) => new Date(message.createdAt) > lastRead);
+    if (firstUnread) {
+      setFirstUnreadMessageId(firstUnread.id || firstUnread._id);
     }
-  }, [chat?.id, messages.length, firstUnreadMessageId]);
+  }, [chat?.id, messages, firstUnreadMessageId]);
+
+  useEffect(() => {
+    if (!messages.length) return;
+    const last = messages[messages.length - 1];
+    if (last.senderId === currentUserId) {
+      setFirstUnreadMessageId(null);
+    }
+  }, [messages, currentUserId]);
 
   useEffect(() => {
     if (listRef.current) {
@@ -70,6 +77,18 @@ const ChatWindow = ({
     chat.type === 'group'
       ? `Участников: ${chat.participants?.length || 0}`
       : `${formatRole(chat.otherUser?.role)} · ${chat.otherUser?.department || 'Отдел не указан'} · ${chat.isOnline ? 'онлайн' : 'офлайн'}`;
+  const isGroupRemoved =
+    chat.type === 'group' && !(chat.participants || []).some((p) => p.id === currentUserId);
+
+  const otherParticipant =
+    chat.type === 'direct'
+      ? (chat.participants || []).find((p) => p.id !== currentUserId)
+      : null;
+  const isBlockedByMe =
+    chat.type === 'direct' && (chat.blocks || []).some((b) => b.by === currentUserId && b.target === otherParticipant?.id);
+  const isBlockedMe =
+    chat.type === 'direct' && (chat.blocks || []).some((b) => b.target === currentUserId && b.by === otherParticipant?.id);
+  const isChatBlocked = chat.type === 'direct' && (isBlockedByMe || isBlockedMe);
 
   return (
     <div className="chat-window">
@@ -79,7 +98,7 @@ const ChatWindow = ({
           <div className="chat-window__meta">{headerMeta}</div>
         </div>
         <div className="chat-window__actions">
-          {canManage && (
+          {(canManage || chat.type === 'direct') && (
             <button type="button" className="secondary-btn" onClick={() => onOpenManage(chat.id)}>
               Управление
             </button>
@@ -139,12 +158,18 @@ const ChatWindow = ({
           );
         })}
       </div>
-      {chat.removed && chat.type === 'group' && (
-        <div className="typing-hint warning">
-          Вас удалили из этой группы. Вы можете просматривать историю, но отправка отключена.
+      {(isGroupRemoved || isChatBlocked) && (
+        <div className="typing-hint info">
+          {chat.type === 'group'
+            ? 'Вы удалены из этой группы. Вы можете просматривать историю сообщений, но отправка новых сообщений недоступна.'
+            : isBlockedByMe && isBlockedMe
+            ? 'Вы с этим пользователем заблокировали друг друга. Переписка в этом чате недоступна, пока хотя бы один из вас не снимет блокировку.'
+            : isBlockedByMe
+            ? 'Вы заблокировали этого пользователя. Переписка в этом чате временно недоступна. Чтобы продолжить, разблокируйте пользователя в разделе «Управление».'
+            : 'Этот пользователь заблокировал вас. Вы не можете отправлять сообщения в этом чате.'}
         </div>
       )}
-      {!chat.removed && typingHint && <div className="typing-hint">{typingHint}</div>}
+      {!isGroupRemoved && !isChatBlocked && typingHint && <div className="typing-hint">{typingHint}</div>}
     </div>
   );
 };
@@ -162,6 +187,7 @@ ChatWindow.propTypes = {
     createdBy: PropTypes.string,
     admins: PropTypes.arrayOf(PropTypes.string),
     lastReadAt: PropTypes.oneOfType([PropTypes.string, PropTypes.instanceOf(Date)]),
+    blocks: PropTypes.array,
   }).isRequired,
   messages: PropTypes.arrayOf(
     PropTypes.shape({

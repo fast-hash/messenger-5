@@ -11,11 +11,11 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const { chatId } = req.query;
-    const messages = await messageService.getMessagesForChat({
+    const { messages, lastReadAt } = await messageService.getMessagesForChat({
       chatId,
       viewerId: req.user.id,
     });
-    res.json({ messages });
+    res.json({ messages, lastReadAt });
   })
 );
 
