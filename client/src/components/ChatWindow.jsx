@@ -14,15 +14,25 @@ const ChatWindow = ({
 }) => {
   const listRef = useRef(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [lastReadBoundary, setLastReadBoundary] = useState(chat.lastReadAt || null);
+  const [firstUnreadMessageId, setFirstUnreadMessageId] = useState(null);
 
   useEffect(() => {
     setShowSettings(false);
+    setFirstUnreadMessageId(null);
   }, [chat.id]);
 
   useEffect(() => {
-    setLastReadBoundary(chat.lastReadAt || null);
-  }, [chat.id, chat.lastReadAt]);
+    if (!chat) return;
+    if (firstUnreadMessageId) return;
+
+    const unreadCount = chat.unreadCount || 0;
+    if (!unreadCount || !messages.length) return;
+
+    const index = messages.length - unreadCount;
+    if (index >= 0 && index < messages.length) {
+      setFirstUnreadMessageId(messages[index].id || messages[index]._id);
+    }
+  }, [chat?.id, messages.length, firstUnreadMessageId]);
 
   useEffect(() => {
     if (listRef.current) {
@@ -60,11 +70,6 @@ const ChatWindow = ({
     chat.type === 'group'
       ? `Участников: ${chat.participants?.length || 0}`
       : `${formatRole(chat.otherUser?.role)} · ${chat.otherUser?.department || 'Отдел не указан'} · ${chat.isOnline ? 'онлайн' : 'офлайн'}`;
-
-  const lastReadAt = lastReadBoundary ? new Date(lastReadBoundary) : null;
-  const firstUnreadIndex = lastReadAt
-    ? messages.findIndex((msg) => new Date(msg.createdAt) > lastReadAt)
-    : -1;
 
   return (
     <div className="chat-window">
@@ -115,7 +120,7 @@ const ChatWindow = ({
 
           return (
             <div key={message.id}>
-              {index === firstUnreadIndex && (
+              {firstUnreadMessageId && (message.id === firstUnreadMessageId || message._id === firstUnreadMessageId) && (
                 <div className="unread-separator">
                   <span>Непрочитанные сообщения</span>
                 </div>
